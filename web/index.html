@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<title>TOKEN NEXUS · 全局 Token 观测台</title>
+<link rel="stylesheet" href="/css/app.css" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23070c16'/%3E%3Cpath d='M8 16h5l2.5-6 3 12L21 16h3' fill='none' stroke='%234cc9f0' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+</head>
+<body class="booting">
+
+<!-- ── 开机自检遮罩 ─────────────────────────────────────────── -->
+<div id="boot" class="boot" aria-hidden="true">
+  <div class="boot__inner">
+    <div class="boot__logo">
+      <svg viewBox="0 0 120 40" class="boot__mark" aria-hidden="true">
+        <path d="M4 20h14l6-14 8 28 7-20 4 6h13" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="boot__title">TOKEN&nbsp;NEXUS</div>
+      <div class="boot__sub">全局 Token 观测台 · GLOBAL TOKEN OBSERVATORY</div>
+    </div>
+    <div class="boot__lines" id="bootLines"></div>
+    <div class="boot__bar"><i id="bootBar"></i></div>
+  </div>
+</div>
+
+<canvas id="field" class="field" aria-hidden="true"></canvas>
+
+<!-- ── 顶栏 ─────────────────────────────────────────────────── -->
+<header class="topbar">
+  <div class="topbar__brand">
+    <svg viewBox="0 0 120 40" class="brand__mark" aria-hidden="true">
+      <path d="M4 20h14l6-14 8 28 7-20 4 6h13" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div class="brand__text">
+      <b>TOKEN NEXUS</b>
+      <span>全局 Token 观测台</span>
+    </div>
+  </div>
+
+  <div class="topbar__status">
+    <span class="pill" id="statusPill" data-state="idle"><i></i><span id="statusText">待机</span></span>
+    <span class="pill pill--ghost" id="clockPill">--:--:--</span>
+  </div>
+
+  <div class="topbar__actions">
+    <div class="seg" id="rangeSeg" role="group" aria-label="时间范围">
+      <button data-days="1">24H</button>
+      <button data-days="7">7D</button>
+      <button data-days="30" class="is-active">30D</button>
+      <button data-days="90">90D</button>
+      <button data-days="0">全部</button>
+    </div>
+    <button class="btn btn--ghost" id="themeBtn" aria-label="切换浅色 / 深色主题" title="切换浅色 / 深色主题">
+      <svg viewBox="0 0 20 20" aria-hidden="true" id="themeIcon">
+        <path d="M15.5 11.5A6 6 0 0 1 8.5 4.5a6 6 0 1 0 7 7Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <button class="btn btn--primary" id="scanBtn">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6a6.4 6.4 0 1 0 6.4 6.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M8 1.6v3.2h3.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      扫描
+    </button>
+    <button class="btn" id="settingsBtn" aria-label="设置">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 10.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Z" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12.9 9.6a1.2 1.2 0 0 0 .24 1.32l.04.05a1.45 1.45 0 1 1-2.05 2.05l-.05-.04a1.2 1.2 0 0 0-1.32-.24 1.2 1.2 0 0 0-.73 1.1v.13a1.45 1.45 0 1 1-2.9 0v-.07a1.2 1.2 0 0 0-.79-1.1 1.2 1.2 0 0 0-1.32.24l-.05.04A1.45 1.45 0 1 1 1.92 11l.04-.05a1.2 1.2 0 0 0 .24-1.32 1.2 1.2 0 0 0-1.1-.73H.97a1.45 1.45 0 1 1 0-2.9h.07a1.2 1.2 0 0 0 1.1-.79 1.2 1.2 0 0 0-.24-1.32l-.04-.05A1.45 1.45 0 1 1 3.91 1.8l.05.04a1.2 1.2 0 0 0 1.32.24h.06a1.2 1.2 0 0 0 .73-1.1V.97a1.45 1.45 0 1 1 2.9 0v.07a1.2 1.2 0 0 0 .73 1.1 1.2 1.2 0 0 0 1.32-.24l.05-.04a1.45 1.45 0 1 1 2.05 2.05l-.04.05a1.2 1.2 0 0 0-.24 1.32v.06a1.2 1.2 0 0 0 1.1.73h.13a1.45 1.45 0 1 1 0 2.9h-.07a1.2 1.2 0 0 0-1.1.73Z" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+    </button>
+  </div>
+</header>
+
+<main class="shell">
+
+  <!-- ── 英雄区：总量（居中构图） ──────────────────────────── -->
+  <section class="hero" aria-labelledby="heroTitle">
+    <div class="modelfield" id="modelfield" aria-hidden="true"></div>
+    <div class="hero__core">
+      <div class="eyebrow" id="heroEyebrow">累计总用量</div>
+      <h1 id="heroTitle" class="hero__total">
+        <span class="odometer" id="odoTotal">0</span>
+      </h1>
+      <div class="hero__unit">T&thinsp;O&thinsp;K&thinsp;E&thinsp;N&thinsp;S</div>
+      <div class="hero__chips" id="heroChips"></div>
+    </div>
+
+    <div class="hero__deck">
+      <div class="hero__today">
+        <div class="eyebrow">今日用量</div>
+        <div class="hero__todayValue" id="todayValue">—</div>
+        <div class="hero__todayNote" id="todayNote"></div>
+      </div>
+      <div class="hero__split" aria-hidden="true"></div>
+      <div class="gauges" id="gauges"></div>
+      <div class="hero__split" aria-hidden="true"></div>
+      <div class="hero__cost">
+        <div class="eyebrow">总消费</div>
+        <div class="hero__costValue" id="costValue">—</div>
+        <div class="hero__costToday"><span>今日消费</span><b id="todayCostValue">—</b></div>
+        <div class="hero__costNote" id="costNote"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 指标条 ─────────────────────────────────────────────── -->
+  <section class="metrics" id="metrics" aria-label="关键指标"></section>
+
+  <!-- ── 趋势 + 时段 ────────────────────────────────────────── -->
+  <section class="grid grid--2" id="trendGrid">
+    <article class="panel panel--wide">
+      <header class="panel__head">
+        <h2 id="trendTitle">每日用量趋势</h2>
+        <div class="panel__legend" id="trendLegend"></div>
+      </header>
+      <div class="chart" id="trendChart"></div>
+      <footer class="panel__foot" id="trendFoot"></footer>
+    </article>
+    <article class="panel" id="hoursPanel">
+      <header class="panel__head"><h2>全天活跃分布</h2></header>
+      <div class="chart chart--hours" id="hoursChart"></div>
+      <footer class="panel__foot" id="hoursFoot"></footer>
+    </article>
+  </section>
+
+  <!-- ── 数据源矩阵 ─────────────────────────────────────────── -->
+  <section class="block">
+    <header class="block__head">
+      <h2>数据源</h2>
+      <p>自动发现的本机日志与云平台连接器。点一下可只看这个源。</p>
+    </header>
+    <div class="sources" id="sourceGrid"></div>
+  </section>
+
+  <!-- ── 模型 / 供应商 / 项目 ───────────────────────────────── -->
+  <section class="grid grid--3">
+    <article class="panel panel--tall">
+      <header class="panel__head">
+        <h2>模型排行</h2>
+        <span class="panel__count" id="modelCount"></span>
+      </header>
+      <div class="rank" id="modelRank"></div>
+    </article>
+    <article class="panel">
+      <header class="panel__head"><h2>供应商分布</h2></header>
+      <div class="donut" id="providerDonut"></div>
+      <div class="legend" id="providerLegend"></div>
+    </article>
+    <article class="panel panel--tall">
+      <header class="panel__head">
+        <h2>项目排行</h2>
+        <span class="panel__count" id="projectCount"></span>
+      </header>
+      <div class="rank" id="projectRank"></div>
+    </article>
+  </section>
+
+  <!-- ── 热力图 ─────────────────────────────────────────────── -->
+  <section class="panel panel--full">
+    <header class="panel__head">
+      <h2>用量热力图</h2>
+      <div class="heat__scale" id="heatScale"></div>
+    </header>
+    <div class="heat" id="heatmap"></div>
+    <footer class="panel__foot" id="heatFoot"></footer>
+  </section>
+
+  <!-- ── 实时流 + 扫描终端 ──────────────────────────────────── -->
+  <section class="grid grid--2">
+    <article class="panel panel--tall">
+      <header class="panel__head"><h2>最近请求流</h2></header>
+      <div class="feed" id="feed"></div>
+    </article>
+    <article class="panel panel--tall">
+      <header class="panel__head">
+        <h2>扫描遥测</h2>
+        <span class="panel__count" id="scanCount"></span>
+      </header>
+      <div class="terminal" id="terminal"></div>
+    </article>
+  </section>
+
+  <footer class="colophon">
+    <span id="colophonLeft"></span>
+    <span id="colophonRight"></span>
+  </footer>
+</main>
+
+<!-- ── 设置抽屉 ─────────────────────────────────────────────── -->
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer__scrim" data-close></div>
+  <div class="drawer__body" role="dialog" aria-label="设置">
+    <header class="drawer__head">
+      <h2>设置</h2>
+      <button class="btn btn--ghost" data-close aria-label="关闭">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+    <div class="drawer__tabs" id="drawerTabs">
+      <button data-tab="display" class="is-active">显示</button>
+      <button data-tab="sources">数据源</button>
+      <button data-tab="pricing">价格表</button>
+      <button data-tab="api">云 API</button>
+      <button data-tab="about">关于</button>
+    </div>
+    <div class="drawer__panes" id="drawerPanes"></div>
+  </div>
+</aside>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

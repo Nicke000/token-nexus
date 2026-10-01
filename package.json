@@ -1,0 +1,47 @@
+{
+  "name": "token-nexus",
+  "version": "1.0.0",
+  "description": "TOKEN NEXUS 全局 Token 观测台 — 自动聚合本机各 AI 编程工具与云平台的 token 用量与费用",
+  "type": "module",
+  "main": "server.mjs",
+  "bin": {
+    "token-nexus": "./server.mjs"
+  },
+  "engines": {
+    "node": ">=22.15.0"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "scan": "node server.mjs --scan-only",
+    "test": "node tools/unit-tests.mjs",
+    "check": "node tools/selfcheck.mjs",
+    "browser": "node tools/browser-check.mjs",
+    "verify": "node tools/unit-tests.mjs && node tools/selfcheck.mjs && node tools/browser-check.mjs",
+    "pricing": "node tools/build-pricing.mjs"
+  },
+  "keywords": [
+    "tokens",
+    "llm",
+    "usage",
+    "billing",
+    "dashboard",
+    "claude-code",
+    "codex",
+    "cursor",
+    "deepseek",
+    "openai",
+    "anthropic"
+  ],
+  "license": "MIT",
+  "author": "TOKEN NEXUS contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nicke000/token-nexus.git"
+  },
+  "homepage": "https://github.com/Nicke000/token-nexus#readme",
+  "bugs": {
+    "url": "https://github.com/Nicke000/token-nexus/issues"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
