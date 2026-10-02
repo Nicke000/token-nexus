@@ -14,7 +14,7 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { extname, join, normalize, resolve, sep } from 'node:path';
+import { extname, join, normalize, resolve, sep, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 
@@ -607,12 +607,21 @@ function openBrowser(url, { asApp = false } = {}) {
   try {
     // 小应用模式：独立窗口 + 没有地址栏，观感接近桌面程序。
     // 用的是系统里已有的 Chrome / Edge，不额外打包任何东西。
+    //
+    // 必须给它一个**自己的 user-data-dir**：共用默认配置的话，Chrome 会把上次
+    // 浏览这个地址时的窗口位置和滚动位置一起恢复出来 —— 实测会开在屏幕外
+    // （比如 x = -1511），用户双击桌面图标后只看到一闪而过的任务栏高亮，
+    // 以为程序没启动。独立配置只影响这一个窗口，不碰用户平时的浏览器。
     if (asApp) {
       const exe = findChromium();
       if (exe) {
-        const child = spawn(exe, [`--app=${url}`, '--window-size=1600,1000', '--no-first-run'], {
-          detached: true, stdio: 'ignore',
-        });
+        const child = spawn(exe, [
+          `--app=${url}`,
+          `--user-data-dir=${join(dirname(CONFIG_PATH), 'app-window')}`,
+          '--window-size=1600,1000',
+          '--no-first-run',
+          '--no-default-browser-check',
+        ], { detached: true, stdio: 'ignore' });
         child.on('error', () => {});
         child.unref();
         return;
