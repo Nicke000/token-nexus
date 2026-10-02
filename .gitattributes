@@ -3,10 +3,11 @@
 
 # 启动脚本例外：必须 CRLF + 纯 ASCII。
 # cmd.exe 按控制台代码页解析 .bat，Windows PowerShell 按 ANSI 代码页解析无 BOM 的 .ps1，
-# 两者都会把 UTF-8 中文读成乱码。这条规则由 npm run check 的断言守住。
+# Windows Script Host 同理，都会把 UTF-8 中文读成乱码。这条规则由 npm run check 的断言守住。
 *.bat text eol=crlf
 *.cmd text eol=crlf
 *.ps1 text eol=crlf
+*.vbs text eol=crlf
 
 # 二进制，不做换行转换
 *.png   binary

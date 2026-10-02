@@ -359,6 +359,10 @@ const server = createServer(async (request, response) => {
 
     if (pathname === '/api/health') {
       sendJson(response, 200, {
+        // 这个标记是「已经有一个 TOKEN NEXUS 在跑」的判据，必须是本程序独有的。
+        // 别拿 ok:true 当判据：本机跑着别的服务（随便什么 /api/health）也会回 ok:true，
+        // 于是双击图标会把这个别的程序开出来，自己的服务反而没起。
+        app: 'token-nexus',
         ok: true,
         scanning: isScanning(),
         lastError,
@@ -375,6 +379,8 @@ const server = createServer(async (request, response) => {
         connection: 'keep-alive',
       });
       response.write(`event: hello\ndata: ${JSON.stringify({ scanning: isScanning() })}\n\n`);
+      // 这个连接同时也是「应用窗口还开着」的活体信号，见下面的 appClients 看门狗。
+      appClients.add(response);
       const unsubscribe = subscribe((events) => {
         for (const event of events) {
           response.write(`data: ${JSON.stringify(event)}\n\n`);
@@ -385,6 +391,7 @@ const server = createServer(async (request, response) => {
       request.on('close', () => {
         clearInterval(heartbeat);
         unsubscribe();
+        appClients.delete(response);
       });
       return;
     }
@@ -529,6 +536,13 @@ function tokenFrom(request, url) {
     ?? null;
 }
 
+/**
+ * 还开着的 /api/events 连接。这些连接就是「界面窗口还开着」的活体信号：
+ * 窗口一关，TCP 断开，'close' 立刻触发，比任何轮询心跳都准
+ * （后台窗口的定时器会被浏览器降频到每分钟一次，靠轮询判断会误杀）。
+ */
+const appClients = new Set();
+
 server.on('error', (error) => {
   // 端口被占用是「打不开」最常见的原因之一。与其让用户读报错，不如自动试下一个端口 ——
   // 反正真正的地址会在下面打印出来并自动打开。显式传 --port 时不自动换（用户是故意的）。
@@ -555,6 +569,36 @@ server.on('error', (error) => {
   }
   process.exit(1);
 });
+
+/**
+ * --app 模式下的「已经开着了就别再开一个」。
+ *
+ * 桌面图标被连点两下是常态。第二个进程会因为端口被占用自动换到 8788，
+ * 然后把窗口开到 8788 上 —— 用户看到的是一个「没有历史数据」的新面板，
+ * 或者以为自己开了两个程序。已经有一个在跑时，只把窗口叫出来就行。
+ *
+ * 判据必须认 app === 'token-nexus'：只看 ok:true 的话，本机任何别的服务
+ * （哪怕是个完全不相干的工具）只要回 ok:true 就会被认成「已经开着了」。
+ */
+async function existingInstanceUrl() {
+  for (let port = PORT; port <= PORT + 5; port += 1) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(500) });
+      const health = await response.json();
+      if (health?.app === 'token-nexus') return hostForUrl(port);
+    } catch { /* 这个端口没人应答，或不是我们 */ }
+  }
+  return null;
+}
+
+if (flag('--app') && !ACCESS_TOKEN && !flag('--no-open') && config.openBrowser !== false) {
+  const running = await existingInstanceUrl();
+  if (running) {
+    console.log(`  TOKEN NEXUS 已经在 ${running} 上跑着了，直接开窗口。`);
+    openBrowser(running, { asApp: true });
+    process.exit(0);
+  }
+}
 
 server.listen(PORT, HOST, () => {
   // 用真实生效的端口（可能因为被占用而自动换过）
@@ -637,10 +681,41 @@ function openBrowser(url, { asApp = false } = {}) {
   }
 }
 
-process.on('SIGINT', () => {
-  console.log('\n  已退出。');
+/**
+ * 退出。关键在 closeAllConnections()：
+ * 界面挂着一条 SSE 长连接，server.close() 会一直等它结束，回调永远不来。
+ * 不掐断的话，服务看起来「已经关了」（端口不再监听），进程却一直活着 ——
+ * 实测就是这么留下一个看不见的孤儿 node，把 8787 占着。
+ */
+function shutdown(reason) {
+  console.log(`\n  已退出（${reason}）。`);
+  try { server.closeAllConnections?.(); } catch { /* 老 Node 没这个方法，下面的兜底会退出 */ }
   server.close(() => process.exit(0));
-  setTimeout(() => process.exit(0), 500).unref();
-});
+  setTimeout(() => process.exit(0), 400).unref();
+}
+
+process.on('SIGINT', () => shutdown('Ctrl+C'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGHUP', () => shutdown('窗口关闭'));   // Windows 上关闭控制台窗口走这里
+
+/**
+ * --app 模式：这个服务就是给那个应用窗口用的，窗口一关就该退出。
+ * 没有终端窗口可关的时候，这是唯一的退出路径。
+ * 用 node server.mjs / start.bat 直接起的话不装看门狗 —— 那种用法
+ * 本来就是「开着终端跑服务」，什么时候停由用户决定。
+ */
+if (flag('--app')) {
+  let seenClient = false;
+  let lastSeenAt = Date.now();
+  setInterval(() => {
+    if (appClients.size > 0) {
+      seenClient = true;
+      lastSeenAt = Date.now();
+      return;
+    }
+    // 12 秒宽限：刷新页面会短暂断开，别把刷新当关闭。
+    if (seenClient && Date.now() - lastSeenAt > 12000) shutdown('应用窗口已关闭');
+  }, 3000).unref?.();
+}
 
 export { server };

@@ -88,7 +88,7 @@ async function main() {
   // cmd.exe 用控制台代码页解析 .bat，Windows PowerShell 用 ANSI 代码页解析无 BOM 的 .ps1。
   // 两者都会把 UTF-8 中文读成乱码 —— .bat 直接崩，.ps1 会因尾字节吞掉引号而语法错误，
   // 表现就是「双击打不开」。这个坑咬过两次，固化成断言。
-  for (const file of ['start.bat', 'start.ps1', 'start.sh']) {
+  for (const file of ['start.bat', 'start.ps1', 'start.sh', 'start.vbs']) {
     const bytes = readFileSync(join(ROOT, file));
     const offenders = [...bytes].filter((byte) => byte > 127).length;
     check(`${file} 纯 ASCII`, offenders === 0,

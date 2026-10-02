@@ -313,11 +313,15 @@ async function refresh({ silent = false } = {}) {
     $('scanBtn').disabled = state.scanning;
     return snapshot;
   } catch (error) {
-    // 渲染过程中的异常也要暴露出来，否则界面会停在半渲染状态却毫无提示
+    // 服务进程被关掉时 fetch 抛的是 TypeError（连不上），这**不是**渲染出错 ——
+    // 之前一律显示「渲染出错」，看着像程序自己坏了，实际只是本地服务没在跑。
+    const offline = error instanceof TypeError;
     state.lastRenderError = `${error?.message ?? error}`;
-    console.error('[render] 渲染失败：', error);
-    setStatus('error', '渲染出错');
-    if (!silent) toast(`渲染失败：${error.message}`, 'error', 8000);
+    console.error('[render] 刷新失败：', error);
+    setStatus('error', offline ? '服务已停止' : '渲染出错');
+    if (!silent) {
+      toast(offline ? '连不上本地服务：请重新双击桌面图标启动' : `渲染失败：${error.message}`, 'error', 8000);
+    }
     return null;
   }
 }
