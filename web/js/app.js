@@ -479,6 +479,12 @@ function applyTheme(theme, { persist = false } = {}) {
 /* ────────────────────────── 初始化 ────────────────────────── */
 
 async function init() {
+  // 「小应用」窗口（start.bat 用 Chrome/Edge 的 --app 打开）和普通标签页共用同一份
+  // 浏览器历史，于是**每次打开都会恢复上次滚到的位置** —— 结果就是双击桌面图标后
+  // 页面停在半中间，巨型数字被顶栏压住，看着像坏了。面板每次都应该从顶部开始。
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  window.scrollTo(0, 0);
+
   // 这里**不**先 startField：applyTheme() 会按主题和 particles 配置决定要不要开，
   // 先开一次再在 applyTheme 里重开就会叠出第二条 rAF 循环（每条都整屏重绘）。
   state.field = { stop() {} };

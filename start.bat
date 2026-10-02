@@ -26,11 +26,11 @@ echo   Node.js v%NODE_VER%
 echo   Starting local server...
 echo.
 echo   - First scan reads all your logs and takes ~30 seconds.
-echo   - The browser opens automatically at http://127.0.0.1:8787
+echo   - The app window opens automatically (http://127.0.0.1:8787)
 echo   - Keep this window open. Close it to stop the server.
 echo.
 
-node server.mjs %*
+node server.mjs --app %*
 set "EXITCODE=%ERRORLEVEL%"
 
 echo.

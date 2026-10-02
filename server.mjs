@@ -45,6 +45,7 @@ if (flag('--help') || flag('-h')) {
 
 用法：
   node server.mjs                    启动服务并打开浏览器
+  node server.mjs --app              「小应用」模式：开一个没有地址栏的独立窗口（Chrome/Edge）
   node server.mjs --port 9000        指定端口
   node server.mjs --host 0.0.0.0     允许局域网访问（默认只监听本机）
   node server.mjs --no-open          不自动打开浏览器
@@ -583,15 +584,42 @@ server.listen(PORT, HOST, () => {
     .catch((error) => console.error(`  [scan] 失败：${error.message}`));
 
   if (!flag('--no-open') && config.openBrowser !== false) {
-    openBrowser(fullUrl);
+    openBrowser(fullUrl, { asApp: flag('--app') });
   }
 });
 
-function openBrowser(url) {
+/** 找一个 Chromium 内核浏览器（用来开 --app 窗口）。找不到就退回默认浏览器。 */
+function findChromium() {
+  if (process.platform !== 'win32') return null;
+  const pf = process.env['PROGRAMFILES'];
+  const pf86 = process.env['PROGRAMFILES(X86)'];
+  return [
+    pf && join(pf, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    pf86 && join(pf86, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    pf86 && join(pf86, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+    pf && join(pf, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+  ].filter(Boolean).find((path) => existsSync(path)) ?? null;
+}
+
+function openBrowser(url, { asApp = false } = {}) {
   const platform = process.platform;
-  const command = platform === 'win32' ? 'cmd' : platform === 'darwin' ? 'open' : 'xdg-open';
-  const args = platform === 'win32' ? ['/c', 'start', '', url] : [url];
   try {
+    // 小应用模式：独立窗口 + 没有地址栏，观感接近桌面程序。
+    // 用的是系统里已有的 Chrome / Edge，不额外打包任何东西。
+    if (asApp) {
+      const exe = findChromium();
+      if (exe) {
+        const child = spawn(exe, [`--app=${url}`, '--window-size=1600,1000', '--no-first-run'], {
+          detached: true, stdio: 'ignore',
+        });
+        child.on('error', () => {});
+        child.unref();
+        return;
+      }
+    }
+    const command = platform === 'win32' ? 'cmd' : platform === 'darwin' ? 'open' : 'xdg-open';
+    const args = platform === 'win32' ? ['/c', 'start', '', url] : [url];
     const child = spawn(command, args, { detached: true, stdio: 'ignore' });
     child.on('error', () => {});
     child.unref();
