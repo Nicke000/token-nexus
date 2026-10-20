@@ -10,13 +10,27 @@ const $ = (id) => document.getElementById(id);
 const ctx = { state: null, refresh: () => {}, toast: () => {}, term: () => {} };
 let current = null;
 
+let rowSeq = 0;
+
 function row(label, desc, control, extraClass = '') {
   const node = document.createElement('div');
   node.className = `field-row ${extraClass}`;
   const text = document.createElement('label');
+  const keyId = `fld-k-${(rowSeq += 1)}`;
+  text.id = keyId;
   text.innerHTML = `<span class="field-k">${label}</span>${desc ? `<span class="field-d">${desc}</span>` : ''}`;
   node.appendChild(text);
-  if (control) node.appendChild(control);
+  if (control) {
+    // 控件在 <label> 外面，光有个 <label> 是关联不上的（点文字不会聚焦）。
+    // 输入类补 for+id；按钮/开关这类没有 labelable 语义的用 aria-labelledby 给可访问名字。
+    if (control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement) {
+      control.id = `fld-c-${rowSeq}`;
+      text.htmlFor = control.id;
+    } else {
+      control.setAttribute('aria-labelledby', keyId);
+    }
+    node.appendChild(control);
+  }
   return node;
 }
 
@@ -471,15 +485,31 @@ function renderPanes() {
   host.appendChild(pane);
 }
 
+let lastFocused = null;
+
+const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
 function open() {
-  $('drawer').classList.add('is-open');
-  $('drawer').setAttribute('aria-hidden', 'false');
+  const drawer = $('drawer');
+  lastFocused = document.activeElement;
+  drawer.classList.add('is-open');
+  drawer.setAttribute('aria-hidden', 'false');
+  // 补齐模态语义：没有这三样，键盘用户会被"困住"（焦点还在页面里），
+  // 读屏用户也不知道弹出了一个对话框。
+  drawer.querySelector('.drawer__body').setAttribute('aria-modal', 'true');
+  document.body.style.overflow = 'hidden';
   renderPanes();
+  drawer.querySelector('.drawer__head button')?.focus();
 }
 
 function close() {
-  $('drawer').classList.remove('is-open');
-  $('drawer').setAttribute('aria-hidden', 'true');
+  const drawer = $('drawer');
+  drawer.classList.remove('is-open');
+  drawer.setAttribute('aria-hidden', 'true');
+  drawer.querySelector('.drawer__body').removeAttribute('aria-modal');
+  document.body.style.overflow = '';
+  lastFocused?.focus?.();
+  lastFocused = null;
 }
 
 export const mountSettings = {
@@ -489,6 +519,21 @@ export const mountSettings = {
     Object.assign(ctx, context);
     $('drawer').addEventListener('click', (event) => {
       if (event.target.closest('[data-close]')) close();
+    });
+    // Tab 在抽屉里循环，不要跑到被遮住的页面上去
+    $('drawer').addEventListener('keydown', (event) => {
+      if (event.key !== 'Tab') return;
+      const items = [...$('drawer').querySelectorAll(FOCUSABLE)].filter((el) => el.offsetParent !== null);
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     });
     $('drawerTabs').addEventListener('click', (event) => {
       const button = event.target.closest('button');
