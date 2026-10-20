@@ -77,6 +77,9 @@ function render(snapshot) {
   $('heroEyebrow').textContent = state.days > 0 ? `最近 ${state.days} 天用量` : '累计总用量';
   // 数字变化时**不做任何闪光**（需求明确去掉"一变就亮一下"）
   renderOdometer($('odoTotal'), totals.total);
+  // h1 里只有一串数字，单位和上下文都在兄弟节点上 —— 读屏只会念出裸数字
+  $('heroTitle')?.setAttribute('aria-label',
+    `${state.days > 0 ? `最近 ${state.days} 天用量` : '累计总用量'} ${full(totals.total)} tokens`);
 
   // 今日（无论当前选的是哪个时间范围，都取「今天」这一天）
   // byDay 由服务端补齐到今天，所以区间里一定找得到今天这一行。
@@ -442,12 +445,21 @@ async function boot() {
   steps.push(['装载价格表 <b>OK</b>', '']);
   steps.push(['就绪', '']);
 
-  for (let i = 0; i < steps.length; i += 1) {
-    push(steps[i][0]);
-    bar.style.width = `${((i + 1) / steps.length) * 100}%`;
-    await new Promise((resolve) => setTimeout(resolve, Math.max(0, 130 - (Date.now() - started) / steps.length / 3)));
-  }
-  await new Promise((resolve) => setTimeout(resolve, 180));
+  // 原来是固定 7 步 × 130ms + 180ms ≈ 1.1 秒 —— 热缓存下数据 100ms 就绪，
+  // 这一秒是纯等待（开机动画不该挡住已经就绪的界面）。
+  // 改成：动画和数据同时跑，数据先到就直接收场，但没有数据时也不会一闪而过。
+  const CAP_MS = 420;
+  const animation = (async () => {
+    for (let i = 0; i < steps.length; i += 1) {
+      if (Date.now() - started > CAP_MS) break;
+      if (i >= 2 && state.rendered) break;
+      push(steps[i][0]);
+      bar.style.width = `${((i + 1) / steps.length) * 100}%`;
+      await new Promise((resolve) => setTimeout(resolve, 90));
+    }
+  })();
+
+  await Promise.race([animation, new Promise((resolve) => setTimeout(resolve, CAP_MS))]);
   $('boot').classList.add('is-done');
   document.body.classList.remove('booting');
 }
@@ -497,8 +509,12 @@ async function init() {
   $('rangeSeg').addEventListener('click', (event) => {
     const button = event.target.closest('button');
     if (!button) return;
-    for (const sibling of $('rangeSeg').children) sibling.classList.remove('is-active');
+    for (const sibling of $('rangeSeg').children) {
+      sibling.classList.remove('is-active');
+      sibling.setAttribute('aria-pressed', 'false');
+    }
     button.classList.add('is-active');
+    button.setAttribute('aria-pressed', 'true');
     state.days = Number(button.dataset.days);
     refresh();
   });
@@ -543,12 +559,19 @@ async function init() {
     }
   }
 
+  // 选中态不能只靠 class：没有 aria-pressed 时读屏读不出当前是哪个区间
+  for (const button of $('rangeSeg').children) {
+    button.setAttribute('aria-pressed', String(button.classList.contains('is-active')));
+  }
+
   mountSettings.setup({ state, refresh, toast, term });
   mountSettings.apply(config?.config);
 
+  // 首帧和数据并行：开机动画不再串行挡在请求前面。
+  // refresh() 自己会吞异常并返回 null，不需要在这里兜 Promise 拒绝。
+  const firstPaint = refresh();
   await boot();
-
-  await refresh();
+  await firstPaint;
   term('NEXUS 控制台就绪，等待遥测…', 'terminal__ok');
 
   // 调试句柄：在浏览器控制台里可以直接看 state / 手动重刷，方便排查
