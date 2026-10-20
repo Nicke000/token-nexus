@@ -43,9 +43,13 @@ export function renderModelField(container, models) {
   container.innerHTML = '';
   if (rows.length === 0) return;
 
-  // 上限只是为了防止极端情况刷屏；正常十个二十个模型全部都会显示
-  const shown = rows.slice(0, 40);
+  // 背景是氛围不是清单。37 个模型全画上去 = 数字被糊住，
+  // 所以按用量取前 18 个（长尾模型合计往往不足 1%，画上去只增加噪点）。
+  const CAP = 18;
+  const shown = rows.slice(0, CAP);
   const maxTotal = Math.max(...shown.map((row) => row.total || 0), 1);
+  // 名字多的时候整体收一档字号和透明度：18 个大名字在一条带里会互相压字
+  const density = Math.min(1, Math.sqrt(12 / Math.max(1, shown.length)));
 
   // 抖动网格：保证铺得开又不重叠得太厉害
   const columns = Math.ceil(Math.sqrt(shown.length));
@@ -86,11 +90,12 @@ export function renderModelField(container, models) {
     // 每个模型一个颜色：按用量排行轮换调色板。写到 --ghost-color 里的是一层
     // var() 引用，配色本体在 CSS 里按主题定义 —— 切主题不需要重绘背景场。
     node.style.setProperty('--ghost-color', `var(--ghost-${index % GHOST_COLORS})`);
-    // 用量占比映射到字号：1.0 ~ 3.2 倍（15px → 最大 48px）
-    node.style.setProperty('--scale', (1 + Math.sqrt(share) * 2.2).toFixed(2));
+    // 用量占比映射到字号：1.0 ~ 3.2 倍（16px → 最大 51px），再乘密度系数
+    node.style.setProperty('--scale', ((1 + Math.sqrt(share) * 2.2) * density).toFixed(2));
     // 越大的模型越显眼，但要压在"看得见但不抢读数"的区间
     // （上限从 0.22 收到 0.16：原值让背景名在数字旁边已经开始抢注意力了）
-    node.style.setProperty('--alpha', (0.07 + Math.sqrt(share) * 0.09).toFixed(3));
+    node.style.setProperty('--alpha',
+      ((0.07 + Math.sqrt(share) * 0.09) * (0.55 + 0.45 * density)).toFixed(3));
     node.style.setProperty('--dur', `${(22 + hashUnit(name, 'd') * 22).toFixed(1)}s`);
     node.style.setProperty('--delay', `${(-hashUnit(name, 'l') * 26).toFixed(1)}s`);
     node.style.setProperty('--dx', `${((hashUnit(name, 'dx') - 0.5) * 190).toFixed(0)}px`);
