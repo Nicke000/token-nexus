@@ -51,6 +51,16 @@ export function renderModelField(container, models) {
   const columns = Math.ceil(Math.sqrt(shown.length));
   const rowsCount = Math.ceil(shown.length / columns);
 
+  // 数字正后方那片椭圆属于「读数区」：模型名不许进去，否则会被误读成
+  // 「数字漏墨」（深色、浅色主题都实测出现了）。用重算坐标而不是 mask-image ——
+  // 保持 app.css 里「零每帧滤镜」的既定取舍。
+  const BLOCK = { cx: 0.5, cy: 0.42, rx: 0.34, ry: 0.2 };
+  const blocked = (px, py) => {
+    const dx = (px / 100 - BLOCK.cx) / BLOCK.rx;
+    const dy = (py / 100 - BLOCK.cy) / BLOCK.ry;
+    return dx * dx + dy * dy < 1;
+  };
+
   shown.forEach((row, index) => {
     const name = row.model;
     const share = (row.total || 0) / maxTotal;
@@ -58,7 +68,15 @@ export function renderModelField(container, models) {
     const column = index % columns;
     const line = Math.floor(index / columns);
     const x = ((column + 0.08 + hashUnit(name, 'x') * 0.78) / columns) * 100;
-    const y = ((line + 0.12 + hashUnit(name, 'y') * 0.7) / rowsCount) * 100;
+    let y = ((line + 0.12 + hashUnit(name, 'y') * 0.7) / rowsCount) * 100;
+
+    // 命中禁布区先在行带内重试（确定性，不引入 Math.random）。
+    // 中间那几行的整条行带都落在数字上，重试也出不来 —— 这时抬到数字上方那片空白带。
+    // 无论如何都**不丢弃**这个模型：「一个模型对应一个背景元素」是要守住的承诺。
+    for (let attempt = 0; attempt < 4 && blocked(x, y); attempt += 1) {
+      y = ((line + 0.55 + hashUnit(name, `y${attempt}`) * 0.42) / rowsCount) * 100;
+    }
+    if (blocked(x, y)) y = 2 + hashUnit(name, 'top') * 16;
 
     const node = document.createElement('span');
     node.className = 'model-ghost';
@@ -71,13 +89,38 @@ export function renderModelField(container, models) {
     // 用量占比映射到字号：1.0 ~ 3.2 倍（15px → 最大 48px）
     node.style.setProperty('--scale', (1 + Math.sqrt(share) * 2.2).toFixed(2));
     // 越大的模型越显眼，但要压在"看得见但不抢读数"的区间
-    node.style.setProperty('--alpha', (0.09 + Math.sqrt(share) * 0.13).toFixed(3));
+    // （上限从 0.22 收到 0.16：原值让背景名在数字旁边已经开始抢注意力了）
+    node.style.setProperty('--alpha', (0.07 + Math.sqrt(share) * 0.09).toFixed(3));
     node.style.setProperty('--dur', `${(22 + hashUnit(name, 'd') * 22).toFixed(1)}s`);
     node.style.setProperty('--delay', `${(-hashUnit(name, 'l') * 26).toFixed(1)}s`);
     node.style.setProperty('--dx', `${((hashUnit(name, 'dx') - 0.5) * 190).toFixed(0)}px`);
     node.style.setProperty('--dy', `${((hashUnit(name, 'dy') - 0.5) * 130).toFixed(0)}px`);
-    node.title = `${name} · ${(row.total || 0).toLocaleString('en-US')} tokens`;
+    // 不设 title：.modelfield 是 pointer-events: none，原生 tooltip 永远不会出现
     container.appendChild(node);
+  });
+
+  // 落位后再按**真实盒子**避让一次。锚点在左上角、名字往右延伸，只判断锚点是不够的：
+  // 锚点落在禁布区之外的长名字（DEEPSEEK-V4.1-FLASH）照样会从右边一路伸到数字上。
+  // 只在模型集合变化时跑一次（上面有 signature 短路），不是每帧。
+  requestAnimationFrame(() => {
+    const hero = container.closest('.hero');
+    const digits = document.getElementById('odoTotal');
+    if (!hero || !digits) return;
+    const zone = digits.getBoundingClientRect();
+    const box = hero.getBoundingClientRect();
+    if (!zone.height || !box.height) return;
+    for (const node of container.children) {
+      const rect = node.getBoundingClientRect();
+      const overlaps = rect.right > zone.left - 40 && rect.left < zone.right + 40
+        && rect.bottom > zone.top - 10 && rect.top < zone.bottom + 10;
+      if (!overlaps) continue;
+      // 挪到数字与指标 chip 之间那条空白带，并压住字号上限，保证不压到上下两行
+      const top = ((zone.bottom + 10 - box.top) / box.height) * 100;
+      node.style.setProperty('--y', `${top.toFixed(1)}%`);
+      if (Number(node.style.getPropertyValue('--scale')) > 1.6) {
+        node.style.setProperty('--scale', '1.6');
+      }
+    }
   });
 }
 
