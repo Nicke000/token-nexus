@@ -19,7 +19,7 @@ import {
 import { normalizeModelId, buildPriceTable, priceFor, costOf } from '../server/pricing.mjs';
 import { findFrameStarts, decodeZstdFrames, iterateZstdLines, iterateFileLines } from '../server/scanners/_shared.mjs';
 import { findUsage } from '../server/scanners/generic.mjs';
-import { parse as parseDsh } from '../server/scanners/dsh.mjs';
+import { parse as parseDsh, enumerate as enumerateDsh } from '../server/scanners/dsh.mjs';
 import { parse as parseReasonix } from '../server/scanners/reasonix.mjs';
 import { parse as parseOpencode } from '../server/scanners/opencode.mjs';
 import { parse as parseVscodeAi } from '../server/scanners/vscode-ai.mjs';
@@ -322,6 +322,34 @@ try {
   ]));
   const cjk = parseDsh({ path: cjkFile, workspace: '--E-cjk--' });
   ok('会话头里的中文项目名跨帧后完好', cjk.resumeState.project === '中文目录/项目', `实际 ${cjk.resumeState.project}`);
+
+  // ── 文件名升版：DSH 换成 v4 之后，扫不到就等于「今日用量 0」而历史还在 ──
+  // 这个 bug 真发生过：v4 写了很多天，界面上今天一直是 0，因为枚举只认 v3/legacy。
+  const v4Dir = join(dshRoot, '--E-tmp-proj--', 'session-v4only');
+  mkdirSync(v4Dir, { recursive: true });
+  const v4File = join(v4Dir, 'session.v4.jsonl.zstd');
+  writeFileSync(v4File, Buffer.concat([
+    zstdCompressSync(Buffer.from(`${sessionHeader}\n`)),
+    framesFor([1, 2].map(usageLine)),
+  ]));
+
+  const bothDir = join(dshRoot, '--E-tmp-proj--', 'session-both');
+  mkdirSync(bothDir, { recursive: true });
+  const bothFrames = Buffer.concat([
+    zstdCompressSync(Buffer.from(`${sessionHeader}\n`)),
+    framesFor([1, 2, 3].map(usageLine)),
+  ]);
+  writeFileSync(join(bothDir, 'session.v3.jsonl.zstd'), bothFrames);
+  writeFileSync(join(bothDir, 'session.v4.jsonl.zstd'), bothFrames);
+
+  const enumerated = enumerateDsh({ paths: [dshRoot] });
+  const v4Item = enumerated.find((entry) => entry.path === v4File);
+  const bothItem = enumerated.find((entry) => entry.path.startsWith(bothDir));
+  ok('enumerate 认 session.v4.jsonl.zstd', Boolean(v4Item));
+  eq('v4 标成 v4 格式', v4Item?.format, 'v4');
+  eq('v4 文件能解析出用量', parseDsh(v4Item).events, 2);
+  eq('同一会话目录同时有 v3/v4 时取 v4（不双读，否则用量翻倍）', bothItem?.format, 'v4');
+  eq('每个会话目录只出一个条目', enumerated.filter((entry) => entry.path.startsWith(bothDir)).length, 1);
 } finally {
   rmSync(dshRoot, { recursive: true, force: true });
 }

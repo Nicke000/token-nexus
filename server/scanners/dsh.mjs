@@ -2,12 +2,17 @@
  * scanners/dsh.mjs —— DeepSeek Harness 会话日志
  *
  * 目录结构（DSH / Codex 系 agent 的通用约定）：
- *   <root>/<workspace-slug>/<session-id>/session.v3.jsonl.zstd   ← 新格式，优先
- *   <root>/<workspace-slug>/<session-id>/session.jsonl.zstd      ← 旧格式，兜底
+ *   <root>/<workspace-slug>/<session-id>/session.v4.jsonl.zstd   ← 当前格式
+ *   <root>/<workspace-slug>/<session-id>/session.v3.jsonl.zstd   ← 上一代
+ *   <root>/<workspace-slug>/<session-id>/session.jsonl.zstd      ← 最老的
  *
- * 两种格式里 `assistant/message` 事件的 usage 与 token 总量**完全一致**，
- * 但 v3 体量只有旧格式的 1/4（旧格式还把流式 chunk 也逐帧存了一遍）。
- * 所以：有 v3 就读 v3，没有才退回旧格式，绝不双读。
+ * v4 与 v3 的事件结构相同（实测直接可解），只是文件名升了版本号 ——
+ * 但**不认它等于今天的数据全丢**：DSH 升到 v4 之后写出的会话一条都扫不到，
+ * 界面上就是「今日用量 0」而历史还在。
+ *
+ * 三种格式里 `assistant/message` 事件的 usage 与 token 总量**完全一致**，
+ * 但 v3/v4 体量只有老格式的 1/4（老格式还把流式 chunk 也逐帧存了一遍）。
+ * 所以：有新格式就读新的，没有才往回退，同一个会话目录绝不双读。
  *
  * 单条事件长这样：
  *   {"type":"assistant/message","seq":17,"time":1790594570197,"data":{
@@ -31,10 +36,14 @@ export const meta = {
   note: '逐条 assistant/message 的 usage 明细，最精确的来源。',
 };
 
+const V4_NAME = 'session.v4.jsonl.zstd';
 const V3_NAME = 'session.v3.jsonl.zstd';
 const LEGACY_NAME = 'session.jsonl.zstd';
 
-/** 枚举出所有待解析的会话日志（会话目录里 v3 优先、旧格式兜底）。 */
+/** 文件名 → 格式标记。新增一代格式就在这里加一行，别的都不用动。 */
+const KNOWN_NAMES = [V4_NAME, V3_NAME, LEGACY_NAME];
+
+/** 枚举出所有待解析的会话日志（同一会话目录里新的优先、旧格式兜底）。 */
 export function enumerate(spec) {
   const items = [];
   for (const root of spec.paths ?? []) {
@@ -57,7 +66,7 @@ export function enumerate(spec) {
       for (const session of sessions) {
         if (!session.isDirectory()) continue;
         const sessionDir = join(wsDir, session.name);
-        const candidates = [join(sessionDir, V3_NAME), join(sessionDir, LEGACY_NAME)];
+        const candidates = KNOWN_NAMES.map((name) => join(sessionDir, name));
         const chosen = candidates.find((p) => existsSync(p));
         if (!chosen) continue;
         let stat;
@@ -74,7 +83,7 @@ export function enumerate(spec) {
           size: stat.size,
           mtimeMs: stat.mtimeMs,
           workspace: workspace.name,
-          format: basename(chosen) === V3_NAME ? 'v3' : 'legacy',
+          format: basename(chosen) === V4_NAME ? 'v4' : basename(chosen) === V3_NAME ? 'v3' : 'legacy',
         });
       }
     }
