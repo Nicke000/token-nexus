@@ -146,12 +146,17 @@ export function formatMoney(usd, config) {
   const rate = currency === 'CNY' ? Number(config?.fxRate) || 7.15 : 1;
   const value = usd * rate;
   const abs = Math.abs(value);
-  const digits = abs >= 1000 ? 0 : abs >= 100 ? 1 : abs >= 1 ? 2 : abs >= 0.01 ? 3 : 4;
+  const symbol = currency === 'CNY' ? '¥' : '$';
+  // 原来按量级在 0~4 位小数之间跳：同一屏会出现 ¥1341 和 ¥0.0000，
+  // 读者建立不起统一的价格直觉。统一两位 + 千分位；小到看不见的量级用 "<¥0.01"。
+  const text = value > 0 && abs < 0.01
+    ? `<${symbol}0.01`
+    : `${symbol}${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   return {
     currency,
     value,
     rate,
-    text: `${currency === 'CNY' ? '¥' : '$'}${value.toFixed(digits)}`,
+    text,
   };
 }
 
