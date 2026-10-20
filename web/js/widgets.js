@@ -379,14 +379,45 @@ function niceMax(value) {
 
 /* ────────────────────────── 24 小时分布 ────────────────────────── */
 
+/**
+ * 触屏没有 hover，原生 title 一辈子不会出来 —— 点一下就把标题内容显示成浮层。
+ * 只在 (hover: none) 的设备上挂，桌面端行为完全不变。
+ * 浮层节点用模块变量持有，不占 index.html 的 DOM 契约（那是给常驻元素用的）。
+ */
+let chartTipNode = null;
+
+function showChartTip(event, text) {
+  if (!text) return;
+  if (!chartTipNode) {
+    chartTipNode = document.createElement('div');
+    chartTipNode.className = 'tooltip';
+    chartTipNode.style.position = 'fixed';
+    document.body.appendChild(chartTipNode);
+  }
+  chartTipNode.textContent = text;
+  chartTipNode.style.left = `${event.clientX}px`;
+  chartTipNode.style.top = `${event.clientY}px`;
+  chartTipNode.classList.add('is-on');
+  clearTimeout(showChartTip.timer);
+  showChartTip.timer = setTimeout(() => chartTipNode.classList.remove('is-on'), 2600);
+}
+
 export function renderHours(container, hours) {
   container.innerHTML = '';
   const max = Math.max(1, ...hours);
+  const total = hours.reduce((sum, value) => sum + (value || 0), 0);
+  const peak = hours.indexOf(Math.max(...hours, 0));
+  // 对读屏用户来说这是一张图，不是 24 个按钮：给一句摘要，而不是塞 24 个 tab 停点。
+  container.setAttribute('role', 'img');
+  container.setAttribute('aria-label',
+    `24 小时活跃分布：总计 ${full(total)} tokens，峰值在 ${String(Math.max(0, peak)).padStart(2, '0')}:00`);
+  const coarse = window.matchMedia('(hover: none)').matches;
   for (let hour = 0; hour < 24; hour += 1) {
     const value = hours[hour] ?? 0;
     const cell = document.createElement('div');
     cell.className = 'hour';
     cell.title = `${String(hour).padStart(2, '0')}:00 — ${full(value)} tokens`;
+    if (coarse) cell.addEventListener('pointerdown', (event) => showChartTip(event, cell.title));
     const bar = document.createElement('div');
     bar.className = 'hour__bar';
     bar.style.height = '2px';
@@ -591,6 +622,8 @@ export function renderHeatmap(container, byDay, scaleEl) {
     monthRow.appendChild(label);
   }
 
+  const coarse = window.matchMedia('(hover: none)').matches;
+
   for (let week = 0; week < weeks; week += 1) {
     const column = document.createElement('div');
     column.className = 'heat__week';
@@ -615,6 +648,7 @@ export function renderHeatmap(container, byDay, scaleEl) {
       // 最高色阶在暗色下加一点辉光，符合「细胞发光」的规格
       if (dark && level === 4) cell.style.boxShadow = `0 0 12px ${rgba(accent, 0.55)}`;
       cell.title = `${key} — ${full(value)} tokens${entry ? ` · ${money(entry.cost)} · ${full(entry.requests)} 次请求` : ''}`;
+      if (coarse) cell.addEventListener('pointerdown', (event) => showChartTip(event, cell.title));
       column.appendChild(cell);
     }
     cols.appendChild(column);
@@ -624,6 +658,12 @@ export function renderHeatmap(container, byDay, scaleEl) {
   body.appendChild(cols);
   container.appendChild(dayLabels);
   container.appendChild(body);
+
+  // 对读屏用户：这是一张图 + 一句摘要，不是 30 个可聚焦格子（那会淹没 tab 序列）
+  const peak = [...(byDay ?? [])].sort((a, b) => (b.total || 0) - (a.total || 0))[0];
+  container.setAttribute('role', 'img');
+  container.setAttribute('aria-label',
+    `用量热力图：近 ${weeks} 周，峰值 ${peak?.day ?? '无'} 共 ${full(peak?.total ?? 0)} tokens`);
 
   if (scaleEl) {
     scaleEl.innerHTML = `少 ${levels.map((color) => `<i style="background:${color}"></i>`).join('')} 多`;
