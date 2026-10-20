@@ -13,7 +13,7 @@
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash } from 'node:crypto';
 import { extname, join, normalize, resolve, sep, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
@@ -27,6 +27,43 @@ import { runConnectors, applyToRaw, connectorSpecs, syncRemotePricing, priceTabl
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const WEB_ROOT = resolve(HERE, 'web');
+
+/* ────────────────────────── 构建指纹 ────────────────────────── */
+
+// 页面靠它判断「磁盘上的代码变了」：桌面版（--app 独立窗口）没有地址栏，
+// 用户看不到「该刷新了」，改完代码只能靠这个自动提示/刷新。
+// 只取大小 + mtime，够用且不用读文件内容。
+const BUILD_FILES = [
+  'server.mjs',
+  'web/index.html',
+  'web/css/app.css',
+  'web/js/app.js',
+  'web/js/api.js',
+  'web/js/format.js',
+  'web/js/widgets.js',
+  'web/js/settings.js',
+  'web/js/modelfield.js',
+  'web/js/background.js',
+];
+
+let buildCache = { at: 0, value: '' };
+
+/** 缓存 2 秒：页面每 30 秒问一次，没必要每次都 stat 十个文件 */
+async function buildFingerprint() {
+  const now = Date.now();
+  if (now - buildCache.at < 2000) return buildCache.value;
+  const parts = [];
+  for (const rel of BUILD_FILES) {
+    try {
+      const info = await stat(resolve(HERE, rel));
+      parts.push(`${rel}:${info.size}:${Math.round(info.mtimeMs)}`);
+    } catch {
+      parts.push(`${rel}:missing`);
+    }
+  }
+  buildCache = { at: now, value: createHash('sha1').update(parts.join('|')).digest('hex').slice(0, 12) };
+  return buildCache.value;
+}
 
 /* ────────────────────────── CLI ────────────────────────── */
 
@@ -364,6 +401,8 @@ const server = createServer(async (request, response) => {
         // 于是双击图标会把这个别的程序开出来，自己的服务反而没起。
         app: 'token-nexus',
         ok: true,
+        // 磁盘上代码的指纹：页面拿它和自己启动时那一次比对，变了就刷新
+        build: await buildFingerprint(),
         scanning: isScanning(),
         lastError,
         cache: cacheStats(),

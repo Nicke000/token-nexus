@@ -417,6 +417,54 @@ function onScanEvent(event) {
 
 /* ────────────────────────── 开机自检 ────────────────────────── */
 
+/* ────────────────────────── 构建指纹 ────────────────────────── */
+
+/**
+ * 磁盘上的代码变了就刷新自己。
+ * 桌面版是 --app 独立窗口：没有地址栏、没有刷新按钮，用户收不到任何「代码更新了」的
+ * 提示，结果就是改完样式还在看旧界面（已经踩过一次）。服务端 /api/health 带 build 指纹，
+ * 这里每 30 秒对一次。
+ */
+function watchBuild() {
+  if (!state.build) return;
+  let pending = false;
+
+  const reload = () => {
+    if (pending) return;
+    pending = true;
+
+    // 设置抽屉开着先别抢：用户可能正改到一半，强刷会把输入冲掉
+    if ($('drawer')?.classList.contains('is-open')) {
+      toast('检测到新版本，关闭设置后自动刷新', 'info', 6000);
+      const timer = setInterval(() => {
+        if ($('drawer')?.classList.contains('is-open')) return;
+        clearInterval(timer);
+        location.reload();
+      }, 800);
+      return;
+    }
+
+    // 窗口在后台就等它回到前台再刷，免得回来看到白屏
+    if (document.hidden) {
+      document.addEventListener('visibilitychange', function once() {
+        if (document.hidden) return;
+        document.removeEventListener('visibilitychange', once);
+        location.reload();
+      });
+      return;
+    }
+
+    toast('检测到新版本，正在刷新…', 'info', 1200);
+    setTimeout(() => location.reload(), 900);
+  };
+
+  setInterval(async () => {
+    if (pending) return;
+    const next = await api.health().catch(() => null);
+    if (next?.build && next.build !== state.build) reload();
+  }, 30000);
+}
+
 async function boot() {
   const lines = $('bootLines');
   const bar = $('bootBar');
@@ -541,6 +589,8 @@ async function init() {
   state.configPath = config?.configPath ?? '';
   state.sources = sources;
   state.health = health;
+  // 启动时这一份构建指纹就是基线，后面变了才刷新
+  state.build = health?.build ?? '';
 
   if (state.config?.ui?.particles === false) {
     document.body.classList.add('no-particles');
@@ -604,6 +654,9 @@ async function init() {
   const pollMs = Math.max(1000, Number(state.config?.refreshMs) || 5000);
   setInterval(() => { if (!state.scanning) refresh({ silent: true }); }, pollMs);
   term(`自动刷新间隔 ${pollMs / 1000}s · 服务端保鲜窗口 ${Math.round((Number(state.config?.cacheTtlMs) || 5000) / 1000)}s`, 'terminal__ok');
+
+  // 磁盘上的代码一改就自己刷新（桌面版没有地址栏，等用户手动刷新是不现实的）
+  watchBuild();
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'r' && (event.metaKey || event.ctrlKey)) {

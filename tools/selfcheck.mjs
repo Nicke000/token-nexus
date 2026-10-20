@@ -149,6 +149,8 @@ async function main() {
     const health = await waitForServer();
     check('服务已监听', true, `${BASE}`);
     check('内置扫描器完整', health.scanners?.length >= 5, `${health.scanners?.length} 个`);
+    // 页面靠这个指纹判断磁盘上的代码变了、该刷新了（桌面版没有地址栏）
+    check('health 带构建指纹', typeof health.build === 'string' && health.build.length === 12, health.build ?? '缺失');
 
     console.log('\n[3] 静态资源');
     for (const path of ['/', '/css/app.css', '/js/app.js', '/js/widgets.js', '/js/settings.js', '/js/background.js', '/js/format.js', '/js/api.js']) {
